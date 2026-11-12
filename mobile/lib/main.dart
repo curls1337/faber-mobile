@@ -70,6 +70,15 @@ class _AppRootRouterState extends State<AppRootRouter> {
       final canAuth =
           await _auth.canCheckBiometrics || await _auth.isDeviceSupported();
       if (!canAuth) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Perangkat tidak mendukung atau belum mengaktifkan Face ID / Passcode di Pengaturan iOS.',
+              ),
+            ),
+          );
+        }
         setState(() => _biometricUnlocked = true);
         return;
       }
@@ -79,13 +88,18 @@ class _AppRootRouterState extends State<AppRootRouter> {
         options: const AuthenticationOptions(
           biometricOnly: false,
           stickyAuth: true,
+          useErrorDialogs: true,
         ),
       );
       if (didAuth) {
         setState(() => _biometricUnlocked = true);
       }
-    } catch (_) {
-      // Fallback: allow unlock on platform error so user is not locked out
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Biometrik error: $e')),
+        );
+      }
       setState(() => _biometricUnlocked = true);
     }
   }

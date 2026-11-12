@@ -100,7 +100,13 @@ class FaberAppState extends ChangeNotifier {
       activeTabIndex = _prefs?.getInt(_prefTab) ?? 0;
       selectedSiteSlug = _prefs?.getString(_prefSiteSlug) ?? '';
       selectedAgentId = _prefs?.getString(_prefAgentId) ?? '';
-      selectedSessionId = _prefs?.getString(_prefSessionId) ?? 'default';
+      if (selectedSiteSlug.isNotEmpty) {
+        selectedSessionId = selectedSiteSlug == '_server'
+            ? 'faber-server'
+            : 'faber-proj-$selectedSiteSlug';
+      } else {
+        selectedSessionId = _prefs?.getString(_prefSessionId) ?? 'default';
+      }
       taskMode = _prefs?.getString(_prefTaskMode) ?? 'swarm';
 
       if (savedUrl != null && savedUrl.isNotEmpty) {
@@ -395,8 +401,18 @@ class FaberAppState extends ChangeNotifier {
     activeFilePath = '';
     activeFileContent = '';
     await _prefs?.setString(_prefSiteSlug, slug);
+
+    // Each project has its own dedicated session & chat history!
+    final projSessionId = slug == '_server' ? 'faber-server' : 'faber-proj-$slug';
+    selectedSessionId = projSessionId;
+    await _prefs?.setString(_prefSessionId, projSessionId);
+    messages = []; // Clear previous project messages to prevent leaking
     notifyListeners();
-    await loadSiteTree();
+
+    await Future.wait([
+      loadSiteTree(),
+      loadHistory(),
+    ]);
   }
 
   Future<void> loadSiteTree() async {

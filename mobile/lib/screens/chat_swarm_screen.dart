@@ -12,6 +12,20 @@ import '../core/tokens.dart';
 import '../models/faber_models.dart';
 import '../widgets/glass_card.dart';
 
+class ChatAttachment {
+  final String name;
+  final String serverPath;
+  final String? localPath;
+  final bool isImage;
+
+  const ChatAttachment({
+    required this.name,
+    required this.serverPath,
+    this.localPath,
+    required this.isImage,
+  });
+}
+
 class ChatSwarmScreen extends StatefulWidget {
   const ChatSwarmScreen({super.key});
 
@@ -22,7 +36,7 @@ class ChatSwarmScreen extends StatefulWidget {
 class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
   final TextEditingController _promptController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
-  final List<String> _pendingAttachments = [];
+  final List<ChatAttachment> _pendingAttachments = [];
   final SpeechToText _speech = SpeechToText();
   final ImagePicker _imagePicker = ImagePicker();
   bool _isVoiceListening = false;
@@ -54,7 +68,9 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
 
     final buffer = StringBuffer();
     if (_pendingAttachments.isNotEmpty) {
-      buffer.writeln('[Lampiran: ${_pendingAttachments.join(', ')}]');
+      buffer.writeln(
+        '[Lampiran: ${_pendingAttachments.map((a) => a.serverPath).join(', ')}]',
+      );
     }
     buffer.write(text);
 
@@ -295,7 +311,14 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
       if (!mounted) return;
       final serverPath = res['path']?.toString() ?? picked.name;
       setState(() {
-        _pendingAttachments.add(serverPath);
+        _pendingAttachments.add(
+          ChatAttachment(
+            name: picked.name,
+            serverPath: serverPath,
+            localPath: picked.path,
+            isImage: true,
+          ),
+        );
         _isUploadingMedia = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -329,8 +352,19 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
       );
       if (!mounted) return;
       final serverPath = res['path']?.toString() ?? file.name;
+      final isImg = file.name.toLowerCase().endsWith('.png') ||
+          file.name.toLowerCase().endsWith('.jpg') ||
+          file.name.toLowerCase().endsWith('.jpeg') ||
+          file.name.toLowerCase().endsWith('.webp');
       setState(() {
-        _pendingAttachments.add(serverPath);
+        _pendingAttachments.add(
+          ChatAttachment(
+            name: file.name,
+            serverPath: serverPath,
+            localPath: file.path,
+            isImage: isImg,
+          ),
+        );
         _isUploadingMedia = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -346,10 +380,17 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
   }
 
   void _openAttachmentSheet(BuildContext context, FaberAppState state) {
-    final candidates = <String>[
-      ...state.flatFiles.take(6),
-      ...state.mediaItems.take(4).map((m) => m.name),
-    ];
+    // Filter files from Library to show media only (Images, Videos, Audios, PDFs)
+    final mediaOnly = state.mediaItems.where((m) {
+      final name = m.name.toLowerCase();
+      return name.endsWith('.png') ||
+          name.endsWith('.jpg') ||
+          name.endsWith('.jpeg') ||
+          name.endsWith('.webp') ||
+          name.endsWith('.mp4') ||
+          name.endsWith('.mp3') ||
+          name.endsWith('.pdf');
+    }).toList();
 
     showModalBottomSheet<void>(
       context: context,
@@ -374,11 +415,42 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
+                if (_isUploadingMedia) ...[
+                  const SizedBox(height: 12),
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                      SizedBox(width: 8),
+                      Text(
+                        'Mengunggah berkas ke server...',
+                        style: TextStyle(
+                          color: FaberTokens.accentCyan,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                const SizedBox(height: 12),
+                FaberGlassButton(
+                  label: 'Pilih dari Media Library Server (${mediaOnly.length})',
+                  icon: CupertinoIcons.photo_on_rectangle,
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _openMediaLibraryPicker(context, state);
+                  },
+                ),
+                const SizedBox(height: 10),
                 Row(
                   children: [
                     Expanded(
                       child: FaberGlassButton(
-                        label: 'Galeri Foto',
+                        label: 'Galeri iPhone',
                         icon: CupertinoIcons.photo,
                         isPrimary: true,
                         onPressed: () {
@@ -402,51 +474,170 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
                 ),
                 const SizedBox(height: 8),
                 FaberGlassButton(
-                  label: 'Pilih Dokumen / PDF / Kode dari HP',
+                  label: 'Pilih File / Dokumen dari HP',
                   icon: CupertinoIcons.folder_open,
                   onPressed: () {
                     Navigator.pop(ctx);
                     _pickAndUploadFile(state);
                   },
                 ),
-                if (candidates.isNotEmpty) ...[
-                  const SizedBox(height: 14),
-                  const Text(
-                    'Atau lampirkan file proyek aktif:',
-                    style: TextStyle(
-                      color: FaberTokens.textSecondary,
-                      fontSize: 12,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: candidates.map((item) {
-                      final added = _pendingAttachments.contains(item);
-                      return FaberPill(
-                        label: item,
-                        icon: CupertinoIcons.paperclip,
-                        color: added
-                            ? FaberTokens.accentEmerald
-                            : FaberTokens.accentCyan,
-                        selected: added,
-                        onTap: () {
-                          setState(() {
-                            if (added) {
-                              _pendingAttachments.remove(item);
-                            } else {
-                              _pendingAttachments.add(item);
-                            }
-                          });
-                          Navigator.pop(ctx);
-                        },
-                      );
-                    }).toList(),
-                  ),
-                ],
               ],
             ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _openMediaLibraryPicker(BuildContext context, FaberAppState state) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: FaberTokens.bgElevated,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) {
+        return Container(
+          height: MediaQuery.of(context).size.height * 0.75,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Center(
+                child: Container(
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: FaberTokens.borderGlassStrong,
+                    borderRadius: FaberTokens.brPill,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Pilih Aset Media Library',
+                    style: TextStyle(
+                      color: FaberTokens.textPrimary,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(CupertinoIcons.xmark_circle_fill),
+                    color: FaberTokens.textSecondary,
+                    onPressed: () => Navigator.pop(ctx),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: state.mediaItems.isEmpty
+                    ? const Center(
+                        child: Text(
+                          'Belum ada aset media di server.',
+                          style: TextStyle(color: FaberTokens.textMuted),
+                        ),
+                      )
+                    : GridView.builder(
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                          childAspectRatio: 0.85,
+                        ),
+                        itemCount: state.mediaItems.length,
+                        itemBuilder: (context, idx) {
+                          final item = state.mediaItems[idx];
+                          final isImg = item.type == 'image';
+                          final rawUrl =
+                              item.rawUrl(state.baseUrl, token: state.api.token);
+
+                          return InkWell(
+                            onTap: () {
+                              setState(() {
+                                _pendingAttachments.add(
+                                  ChatAttachment(
+                                    name: item.name,
+                                    serverPath: item.path,
+                                    isImage: isImg,
+                                  ),
+                                );
+                              });
+                              Navigator.pop(ctx);
+                            },
+                            borderRadius: FaberTokens.brMd,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: FaberTokens.brMd,
+                                border: Border.all(
+                                  color: FaberTokens.borderGlass,
+                                ),
+                                color: FaberTokens.surfaceGlass,
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Expanded(
+                                    child: ClipRRect(
+                                      borderRadius: const BorderRadius.vertical(
+                                        top: Radius.circular(10),
+                                      ),
+                                      child: isImg
+                                          ? Image.network(
+                                              rawUrl,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (_, __, ___) =>
+                                                  const Center(
+                                                child: Icon(
+                                                  CupertinoIcons.photo,
+                                                  color: FaberTokens.textMuted,
+                                                ),
+                                              ),
+                                            )
+                                          : Container(
+                                              color: FaberTokens.accentIndigo
+                                                  .withOpacity(0.2),
+                                              child: Center(
+                                                child: Icon(
+                                                  item.type == 'video'
+                                                      ? CupertinoIcons
+                                                          .play_circle_fill
+                                                      : item.type == 'audio'
+                                                          ? CupertinoIcons
+                                                              .waveform
+                                                          : CupertinoIcons
+                                                              .doc_richtext,
+                                                  color: FaberTokens.accentCyan,
+                                                ),
+                                              ),
+                                            ),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.all(4),
+                                    child: Text(
+                                      item.name.split('/').last,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(
+                                        fontSize: 10,
+                                        color: FaberTokens.textPrimary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
           ),
         );
       },
@@ -681,23 +872,72 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
           ),
         ),
 
-        // Pending Attachments Bar
+        // Pending Attachments Thumbnail Preview Bar
         if (_pendingAttachments.isNotEmpty)
           Container(
+            height: 64,
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: _pendingAttachments.map((file) {
-                return FaberPill(
-                  label: '$file ✕',
-                  color: FaberTokens.accentCyan,
-                  onTap: () {
-                    setState(() => _pendingAttachments.remove(file));
-                  },
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _pendingAttachments.length,
+              separatorBuilder: (_, __) => const SizedBox(width: 8),
+              itemBuilder: (context, idx) {
+                final att = _pendingAttachments[idx];
+                return Stack(
+                  children: [
+                    Container(
+                      width: 56,
+                      height: 56,
+                      decoration: BoxDecoration(
+                        borderRadius: FaberTokens.brMd,
+                        border: Border.all(
+                          color: FaberTokens.accentCyan.withOpacity(0.4),
+                        ),
+                        color: FaberTokens.surfaceGlassElevated,
+                      ),
+                      child: ClipRRect(
+                        borderRadius: FaberTokens.brMd,
+                        child: att.isImage && att.localPath != null
+                            ? Image.file(
+                                File(att.localPath!),
+                                fit: BoxFit.cover,
+                              )
+                            : Center(
+                                child: Icon(
+                                  att.isImage
+                                      ? CupertinoIcons.photo
+                                      : CupertinoIcons.doc_text,
+                                  color: FaberTokens.accentCyan,
+                                  size: 24,
+                                ),
+                              ),
+                      ),
+                    ),
+                    Positioned(
+                      top: 2,
+                      right: 2,
+                      child: GestureDetector(
+                        onTap: () {
+                          setState(() => _pendingAttachments.removeAt(idx));
+                        },
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(
+                            color: Colors.black87,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            CupertinoIcons.xmark,
+                            size: 11,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 );
-              }).toList(),
+              },
             ),
           ),
 
