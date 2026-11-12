@@ -245,7 +245,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
       case 'audio':
         return CupertinoIcons.waveform;
       default:
-        return CupertinoIcons.doc_richtext_fill;
+        return CupertinoIcons.doc_richtext;
     }
   }
 
