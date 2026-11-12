@@ -1,0 +1,17 @@
+{
+  "slug": "faber-mobile",
+  "title": "Faber Studio Mobile — VisionOS iOS & Android Client",
+  "description": "Aplikasi mobile iOS (.ipa) & Android (.apk) resmi untuk Faber Studio: Chat & Swarm 16 Agen, Projects & Live Code Studio + Terminal, Hermes War Office, Media Library Vault, serta Automations & System Telemetry.",
+  "public": true,
+  "category": "mobile-client",
+  "tags": [
+    "faber-studio",
+    "ios-ipa",
+    "android-apk",
+    "flutter",
+    "visionos",
+    "multi-agent",
+    "code-editor",
+    "terminal"
+  ]
+}

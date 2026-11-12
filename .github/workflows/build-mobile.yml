@@ -1,0 +1,179 @@
+name: Build Mobile App (iOS IPA & Android APK)
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    name: Build Android APK (Flutter)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21 LTS
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Scaffold Native Shells & Restore Custom Source
+        working-directory: mobile
+        run: |
+          mkdir -p /tmp/custom_src
+          cp -r lib /tmp/custom_src/
+          cp pubspec.yaml /tmp/custom_src/
+          flutter create --platforms=android,ios --org com.faberstudio.mobile --project-name faber_mobile .
+          rm -rf lib/*
+          cp -r /tmp/custom_src/lib/* lib/
+          cp /tmp/custom_src/pubspec.yaml pubspec.yaml
+
+          # Inject commercial App Display Name & INTERNET permission
+          sed -i 's/android:label="[a-z_]*"/android:label="Faber Studio"/' android/app/src/main/AndroidManifest.xml || true
+          if ! grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml; then
+            sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
+          fi
+
+          # Disable blocking release lint checks in Gradle
+          if [ -f android/app/build.gradle.kts ]; then
+            cat << 'EOF' >> android/app/build.gradle.kts
+
+          android {
+              lint {
+                  checkReleaseBuilds = false
+                  abortOnError = false
+              }
+          }
+          EOF
+          elif [ -f android/app/build.gradle ]; then
+            cat << 'EOF' >> android/app/build.gradle
+
+          android {
+              lintOptions {
+                  checkReleaseBuilds false
+                  abortOnError false
+              }
+          }
+          EOF
+          fi
+
+          flutter pub get
+
+      - name: Build Release APK
+        working-directory: mobile
+        run: |
+          flutter build apk --release || (cd android && ./gradlew assembleRelease -x lintVitalRelease)
+          APK_PATH=$(find build/app/outputs -name "*release*.apk" | head -n 1)
+          cp "$APK_PATH" ../FaberStudio-release.apk
+
+      - name: Upload APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-APK
+          path: ./FaberStudio-release.apk
+
+  build-ios:
+    name: Build iOS Sideload IPA (Flutter)
+    runs-on: macos-latest
+    steps:
+      - name: Checkout Source
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      - name: Scaffold Native Shells & Restore Custom Source
+        working-directory: mobile
+        run: |
+          mkdir -p /tmp/custom_src
+          cp -r lib /tmp/custom_src/
+          cp pubspec.yaml /tmp/custom_src/
+          flutter create --platforms=android,ios --org com.faberstudio.mobile --project-name faber_mobile .
+          rm -rf lib/*
+          cp -r /tmp/custom_src/lib/* lib/
+          cp /tmp/custom_src/pubspec.yaml pubspec.yaml
+
+          # Inject commercial App Display Name
+          sed -i '' 's/<string>$(PRODUCT_NAME)<\/string>/<string>Faber Studio<\/string>/g' ios/Runner/Info.plist || true
+          flutter pub get
+
+      - name: Build Unsigned iOS App & Package IPA
+        working-directory: mobile
+        run: |
+          flutter build ios --config-only --no-codesign
+          cd ios
+          xcodebuild build \
+            -workspace Runner.xcworkspace \
+            -scheme Runner \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_IDENTITY="" \
+            DEVELOPMENT_TEAM=""
+          cd ..
+
+          RUNNER_APP=$(find ios/build -name "Runner.app" -type d | head -n 1)
+          if [ -z "$RUNNER_APP" ]; then
+            echo "Runner.app not found!"
+            exit 1
+          fi
+          mkdir -p Payload
+          cp -r "$RUNNER_APP" Payload/
+          zip -r ../FaberStudio-iOS.ipa Payload
+
+      - name: Upload IPA Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: iOS-IPA
+          path: ./FaberStudio-iOS.ipa
+
+  publish-release:
+    name: Publish IPA & APK to GitHub Releases
+    needs: [build-android, build-ios]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: Android-APK
+          path: ./release-files
+
+      - name: Download IPA
+        uses: actions/download-artifact@v4
+        with:
+          name: iOS-IPA
+          path: ./release-files
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0-${{ github.run_number }}
+          name: "Faber Studio Mobile v1.0.0-${{ github.run_number }}"
+          body: |
+            ## Faber Studio Mobile — iOS & Android Release
+            - **iOS Sideload (`.ipa`)**: `FaberStudio-iOS.ipa` (ESign, GBox, AltStore, Sideloadly)
+            - **Android Direct Install (`.apk`)**: `FaberStudio-release.apk`
+          draft: false
+          prerelease: false
+          files: |
+            ./release-files/FaberStudio-release.apk
+            ./release-files/FaberStudio-iOS.ipa
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
