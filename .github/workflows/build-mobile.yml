@@ -69,6 +69,7 @@ jobs:
           fi
 
           flutter pub get
+          dart run flutter_launcher_icons
 
       - name: Build Release APK
         working-directory: mobile
@@ -110,6 +111,7 @@ jobs:
           # Inject commercial App Display Name
           sed -i '' 's/<string>$(PRODUCT_NAME)<\/string>/<string>Faber Studio<\/string>/g' ios/Runner/Info.plist || true
           flutter pub get
+          dart run flutter_launcher_icons
 
       - name: Build Unsigned iOS App & Package IPA
         working-directory: mobile
