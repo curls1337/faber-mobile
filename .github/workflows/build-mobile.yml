@@ -39,11 +39,13 @@ jobs:
           cp -r /tmp/custom_src/lib/* lib/
           cp /tmp/custom_src/pubspec.yaml pubspec.yaml
 
-          # Inject commercial App Display Name & INTERNET permission
+          # Inject commercial App Display Name & INTERNET / MIC / BIOMETRIC / CAMERA permissions
           sed -i 's/android:label="[a-z_]*"/android:label="Faber Studio"/' android/app/src/main/AndroidManifest.xml || true
-          if ! grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml; then
-            sed -i 's/<application/<uses-permission android:name="android.permission.INTERNET"\/>\n    <application/' android/app/src/main/AndroidManifest.xml
-          fi
+          for perm in INTERNET RECORD_AUDIO CAMERA USE_BIOMETRIC; do
+            if ! grep -q "android.permission.$perm" android/app/src/main/AndroidManifest.xml; then
+              sed -i "s|<application|<uses-permission android:name=\"android.permission.$perm\"/>\n    <application|" android/app/src/main/AndroidManifest.xml
+            fi
+          done
 
           # Disable blocking release lint checks in Gradle
           if [ -f android/app/build.gradle.kts ]; then
@@ -108,8 +110,13 @@ jobs:
           cp -r /tmp/custom_src/lib/* lib/
           cp /tmp/custom_src/pubspec.yaml pubspec.yaml
 
-          # Inject commercial App Display Name
+          # Inject commercial App Display Name & iOS Microphone, Speech, Camera, Photos, FaceID permissions
           sed -i '' 's/<string>$(PRODUCT_NAME)<\/string>/<string>Faber Studio<\/string>/g' ios/Runner/Info.plist || true
+          /usr/libexec/PlistBuddy -c "Add :NSMicrophoneUsageDescription string 'Faber Studio memerlukan mikrofon untuk dikte suara perintah AI.'" ios/Runner/Info.plist || /usr/libexec/PlistBuddy -c "Set :NSMicrophoneUsageDescription 'Faber Studio memerlukan mikrofon untuk dikte suara perintah AI.'" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSSpeechRecognitionUsageDescription string 'Faber Studio menggunakan pengenalan suara untuk mengetik instruksi agen secara hands-free.'" ios/Runner/Info.plist || /usr/libexec/PlistBuddy -c "Set :NSSpeechRecognitionUsageDescription 'Faber Studio menggunakan pengenalan suara untuk mengetik instruksi agen secara hands-free.'" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSPhotoLibraryUsageDescription string 'Faber Studio membutuhkan akses galeri untuk melampirkan gambar ke agen AI.'" ios/Runner/Info.plist || /usr/libexec/PlistBuddy -c "Set :NSPhotoLibraryUsageDescription 'Faber Studio membutuhkan akses galeri untuk melampirkan gambar ke agen AI.'" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSCameraUsageDescription string 'Faber Studio membutuhkan kamera untuk memotret layar atau dokumen ke agen AI.'" ios/Runner/Info.plist || /usr/libexec/PlistBuddy -c "Set :NSCameraUsageDescription 'Faber Studio membutuhkan kamera untuk memotret layar atau dokumen ke agen AI.'" ios/Runner/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string 'Faber Studio menggunakan Face ID untuk menjaga keamanan akses ke server VPS Anda.'" ios/Runner/Info.plist || /usr/libexec/PlistBuddy -c "Set :NSFaceIDUsageDescription 'Faber Studio menggunakan Face ID untuk menjaga keamanan akses ke server VPS Anda.'" ios/Runner/Info.plist
           flutter pub get
           dart run flutter_launcher_icons
 

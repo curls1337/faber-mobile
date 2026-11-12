@@ -1,7 +1,12 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
+import 'package:speech_to_text/speech_to_text.dart';
 import '../core/faber_app_state.dart';
 import '../core/tokens.dart';
 import '../models/faber_models.dart';
@@ -18,10 +23,14 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
   final TextEditingController _promptController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
   final List<String> _pendingAttachments = [];
+  final SpeechToText _speech = SpeechToText();
+  final ImagePicker _imagePicker = ImagePicker();
   bool _isVoiceListening = false;
+  bool _isUploadingMedia = false;
 
   @override
   void dispose() {
+    _speech.stop();
     _promptController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -263,15 +272,83 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
     );
   }
 
+  Future<void> _pickAndUploadImage(
+    ImageSource source,
+    FaberAppState state,
+  ) async {
+    try {
+      final picked = await _imagePicker.pickImage(
+        source: source,
+        maxWidth: 1600,
+        imageQuality: 85,
+      );
+      if (picked == null) return;
+      setState(() => _isUploadingMedia = true);
+      final bytes = await picked.readAsBytes();
+      final b64 = base64Encode(bytes);
+      final ext = picked.name.split('.').last.toLowerCase();
+      final mime = ext == 'png' ? 'image/png' : 'image/jpeg';
+      final res = await state.api.uploadChatMedia(
+        filename: picked.name,
+        dataUrl: 'data:$mime;base64,$b64',
+      );
+      if (!mounted) return;
+      final serverPath = res['path']?.toString() ?? picked.name;
+      setState(() {
+        _pendingAttachments.add(serverPath);
+        _isUploadingMedia = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✅ Gambar ${picked.name} berhasil diunggah')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isUploadingMedia = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal upload gambar: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickAndUploadFile(FaberAppState state) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(withData: true);
+      if (result == null || result.files.isEmpty) return;
+      final file = result.files.first;
+      setState(() => _isUploadingMedia = true);
+      final bytes = file.bytes ??
+          (file.path != null ? await File(file.path!).readAsBytes() : null);
+      if (bytes == null) {
+        setState(() => _isUploadingMedia = false);
+        return;
+      }
+      final b64 = base64Encode(bytes);
+      final res = await state.api.uploadChatMedia(
+        filename: file.name,
+        dataUrl: 'data:application/octet-stream;base64,$b64',
+      );
+      if (!mounted) return;
+      final serverPath = res['path']?.toString() ?? file.name;
+      setState(() {
+        _pendingAttachments.add(serverPath);
+        _isUploadingMedia = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('✅ File ${file.name} berhasil diunggah')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isUploadingMedia = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal upload file: $e')),
+      );
+    }
+  }
+
   void _openAttachmentSheet(BuildContext context, FaberAppState state) {
     final candidates = <String>[
       ...state.flatFiles.take(6),
       ...state.mediaItems.take(4).map((m) => m.name),
-      if (state.flatFiles.isEmpty && state.mediaItems.isEmpty) ...[
-        'lib/main.dart',
-        'pubspec.yaml',
-        'architecture_spec.md',
-      ],
     ];
 
     showModalBottomSheet<void>(
@@ -289,7 +366,7 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Lampirkan Konteks File / Media',
+                  'Unggah Gambar / File ke Agen',
                   style: TextStyle(
                     color: FaberTokens.textPrimary,
                     fontSize: 16,
@@ -297,31 +374,77 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
                   ),
                 ),
                 const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: candidates.map((item) {
-                    final added = _pendingAttachments.contains(item);
-                    return FaberPill(
-                      label: item,
-                      icon: CupertinoIcons.paperclip,
-                      color: added
-                          ? FaberTokens.accentEmerald
-                          : FaberTokens.accentCyan,
-                      selected: added,
-                      onTap: () {
-                        setState(() {
-                          if (added) {
-                            _pendingAttachments.remove(item);
-                          } else {
-                            _pendingAttachments.add(item);
-                          }
-                        });
-                        Navigator.pop(ctx);
-                      },
-                    );
-                  }).toList(),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FaberGlassButton(
+                        label: 'Galeri Foto',
+                        icon: CupertinoIcons.photo,
+                        isPrimary: true,
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _pickAndUploadImage(ImageSource.gallery, state);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: FaberGlassButton(
+                        label: 'Kamera',
+                        icon: CupertinoIcons.camera,
+                        onPressed: () {
+                          Navigator.pop(ctx);
+                          _pickAndUploadImage(ImageSource.camera, state);
+                        },
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 8),
+                FaberGlassButton(
+                  label: 'Pilih Dokumen / PDF / Kode dari HP',
+                  icon: CupertinoIcons.folder_open,
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _pickAndUploadFile(state);
+                  },
+                ),
+                if (candidates.isNotEmpty) ...[
+                  const SizedBox(height: 14),
+                  const Text(
+                    'Atau lampirkan file proyek aktif:',
+                    style: TextStyle(
+                      color: FaberTokens.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: candidates.map((item) {
+                      final added = _pendingAttachments.contains(item);
+                      return FaberPill(
+                        label: item,
+                        icon: CupertinoIcons.paperclip,
+                        color: added
+                            ? FaberTokens.accentEmerald
+                            : FaberTokens.accentCyan,
+                        selected: added,
+                        onTap: () {
+                          setState(() {
+                            if (added) {
+                              _pendingAttachments.remove(item);
+                            } else {
+                              _pendingAttachments.add(item);
+                            }
+                          });
+                          Navigator.pop(ctx);
+                        },
+                      );
+                    }).toList(),
+                  ),
+                ],
               ],
             ),
           ),
@@ -330,20 +453,57 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
     );
   }
 
-  void _toggleVoiceInput() {
-    setState(() {
-      _isVoiceListening = !_isVoiceListening;
-    });
+  Future<void> _toggleVoiceInput() async {
     if (_isVoiceListening) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Mode dikte suara aktif — ketuk lagi untuk selesai.'),
-          duration: Duration(seconds: 2),
-        ),
+      await _speech.stop();
+      setState(() => _isVoiceListening = false);
+      return;
+    }
+
+    try {
+      final available = await _speech.initialize(
+        onStatus: (status) {
+          if (status == 'done' || status == 'notListening') {
+            if (mounted) setState(() => _isVoiceListening = false);
+          }
+        },
+        onError: (err) {
+          if (!mounted) return;
+          setState(() => _isVoiceListening = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Voice error: ${err.errorMsg}')),
+          );
+        },
       );
-    } else if (_promptController.text.trim().isEmpty) {
-      _promptController.text =
-          'Periksa status seluruh service dan laporkan ringkasan performa.';
+      if (!available) {
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Izin Mikrofon / Speech Recognition belum aktif di iPhone.'),
+          ),
+        );
+        return;
+      }
+
+      setState(() => _isVoiceListening = true);
+      await _speech.listen(
+        localeId: 'id_ID',
+        onResult: (res) {
+          if (!mounted) return;
+          setState(() {
+            _promptController.text = res.recognizedWords;
+            _promptController.selection = TextSelection.fromPosition(
+              TextPosition(offset: _promptController.text.length),
+            );
+          });
+        },
+      );
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _isVoiceListening = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Gagal mengaktifkan voice: $e')),
+      );
     }
   }
 

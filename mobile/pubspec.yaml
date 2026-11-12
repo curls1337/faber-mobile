@@ -1,7 +1,7 @@
 name: faber_mobile
 description: "Faber Studio iOS & Android Mobile Suite — Swarm, Code Studio, War Office & Media Vault"
 publish_to: 'none'
-version: 1.0.1+4
+version: 1.0.2+5
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -18,6 +18,10 @@ dependencies:
   flutter_highlight: ^0.7.0
   audioplayers: ^6.1.0
   video_player: ^2.9.2
+  speech_to_text: ^7.0.0
+  image_picker: ^1.1.2
+  file_picker: ^8.1.2
+  local_auth: ^2.3.0
 
 dev_dependencies:
   flutter_test:

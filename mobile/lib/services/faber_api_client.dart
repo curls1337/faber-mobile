@@ -339,6 +339,20 @@ class FaberApiClient {
     yield const FaberStreamEvent(event: 'done');
   }
 
+  Future<Map<String, dynamic>> uploadChatMedia({
+    required String filename,
+    required String dataUrl,
+  }) async {
+    return _request(
+      'POST',
+      '/api/chat-media/upload',
+      body: {
+        'filename': filename,
+        'dataUrl': dataUrl,
+      },
+    );
+  }
+
   // ---------------------------------------------------------------------------
   // Code Studio & Terminal
   // ---------------------------------------------------------------------------

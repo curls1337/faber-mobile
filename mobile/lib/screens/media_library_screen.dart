@@ -109,8 +109,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     ),
   ];
 
-  Future<void> _downloadItem(FaberMediaItem item, String baseUrl) async {
-    final url = item.rawUrl(baseUrl);
+  Future<void> _downloadItem(FaberMediaItem item, FaberAppState state) async {
+    final url = item.rawUrl(state.baseUrl, token: state.api.token);
     final uri = Uri.tryParse(url);
     if (uri == null) return;
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
@@ -121,8 +121,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
     }
   }
 
-  Future<void> _toggleAudio(FaberMediaItem item, String baseUrl) async {
-    final url = item.rawUrl(baseUrl);
+  Future<void> _toggleAudio(FaberMediaItem item, FaberAppState state) async {
+    final url = item.rawUrl(state.baseUrl, token: state.api.token);
     try {
       if (_playingAudioId == item.id && _isAudioPlaying) {
         await _audioPlayer.pause();
@@ -148,7 +148,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   void _openVideoPlayerModal(
     BuildContext context,
     FaberMediaItem item,
-    String baseUrl,
+    FaberAppState state,
   ) {
     showModalBottomSheet<void>(
       context: context,
@@ -159,8 +159,8 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
       ),
       builder: (_) => _VideoPlayerModal(
         item: item,
-        mediaUrl: item.rawUrl(baseUrl),
-        onDownload: () => _downloadItem(item, baseUrl),
+        mediaUrl: item.rawUrl(state.baseUrl, token: state.api.token),
+        onDownload: () => _downloadItem(item, state),
       ),
     );
   }
@@ -168,9 +168,9 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
   void _openImagePreviewModal(
     BuildContext context,
     FaberMediaItem item,
-    String baseUrl,
+    FaberAppState state,
   ) {
-    final url = item.rawUrl(baseUrl);
+    final url = item.rawUrl(state.baseUrl, token: state.api.token);
     showDialog<void>(
       context: context,
       builder: (ctx) => Dialog(
@@ -227,7 +227,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                 label: 'Unduh Gambar',
                 icon: CupertinoIcons.cloud_download,
                 isPrimary: true,
-                onPressed: () => _downloadItem(item, baseUrl),
+                onPressed: () => _downloadItem(item, state),
               ),
             ],
           ),
@@ -426,8 +426,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                     CupertinoIcons.cloud_download,
                                     color: FaberTokens.accentCyan,
                                   ),
-                                  onPressed: () =>
-                                      _downloadItem(item, state.baseUrl),
+                                  onPressed: () => _downloadItem(item, state),
                                 ),
                               ],
                             ),
@@ -446,8 +445,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                         : CupertinoIcons.play_fill,
                                     compact: true,
                                     isPrimary: true,
-                                    onPressed: () =>
-                                        _toggleAudio(item, state.baseUrl),
+                                    onPressed: () => _toggleAudio(item, state),
                                   ),
                                   if (isThisAudio)
                                     Text(
@@ -469,7 +467,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                 onPressed: () => _openVideoPlayerModal(
                                   context,
                                   item,
-                                  state.baseUrl,
+                                  state,
                                 ),
                               )
                             else if (item.type == 'image')
@@ -480,7 +478,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                 onPressed: () => _openImagePreviewModal(
                                   context,
                                   item,
-                                  state.baseUrl,
+                                  state,
                                 ),
                               )
                             else
@@ -488,8 +486,7 @@ class _MediaLibraryScreenState extends State<MediaLibraryScreen> {
                                 label: 'Buka Dokumen / PDF',
                                 icon: CupertinoIcons.doc_text_search,
                                 compact: true,
-                                onPressed: () =>
-                                    _downloadItem(item, state.baseUrl),
+                                onPressed: () => _downloadItem(item, state),
                               ),
                           ],
                         ),

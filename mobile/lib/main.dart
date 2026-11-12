@@ -1,6 +1,7 @@
 import 'dart:ui';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:local_auth/local_auth.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/faber_app_state.dart';
@@ -42,6 +43,7 @@ class AppRootRouter extends StatefulWidget {
 }
 
 class _AppRootRouterState extends State<AppRootRouter> {
+  final LocalAuthentication _auth = LocalAuthentication();
   bool _biometricEnabled = false;
   bool _biometricUnlocked = false;
 
@@ -58,10 +60,34 @@ class _AppRootRouterState extends State<AppRootRouter> {
       _biometricEnabled = enabled;
       _biometricUnlocked = !enabled;
     });
+    if (enabled) {
+      _unlockBiometric();
+    }
   }
 
-  void _unlockBiometric() {
-    setState(() => _biometricUnlocked = true);
+  Future<void> _unlockBiometric() async {
+    try {
+      final canAuth =
+          await _auth.canCheckBiometrics || await _auth.isDeviceSupported();
+      if (!canAuth) {
+        setState(() => _biometricUnlocked = true);
+        return;
+      }
+      final didAuth = await _auth.authenticate(
+        localizedReason:
+            'Pindai Face ID atau sidik jari untuk membuka Faber Studio',
+        options: const AuthenticationOptions(
+          biometricOnly: false,
+          stickyAuth: true,
+        ),
+      );
+      if (didAuth) {
+        setState(() => _biometricUnlocked = true);
+      }
+    } catch (_) {
+      // Fallback: allow unlock on platform error so user is not locked out
+      setState(() => _biometricUnlocked = true);
+    }
   }
 
   @override

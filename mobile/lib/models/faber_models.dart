@@ -355,11 +355,15 @@ class FaberMediaItem {
     this.createdAt,
   });
 
-  String rawUrl(String baseUrl) {
+  String rawUrl(String baseUrl, {String? token}) {
     final cleanBase = baseUrl.endsWith('/')
         ? baseUrl.substring(0, baseUrl.length - 1)
         : baseUrl;
-    return '$cleanBase/api/library/raw?path=${Uri.encodeComponent(path)}';
+    final base = '$cleanBase/api/library/raw?path=${Uri.encodeComponent(path)}';
+    if (token != null && token.isNotEmpty) {
+      return '$base&token=${Uri.encodeComponent(token)}';
+    }
+    return base;
   }
 
   String get formattedSize {
