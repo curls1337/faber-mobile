@@ -367,7 +367,7 @@ class MainShellScreen extends StatelessWidget {
     ];
 
     return Scaffold(
-      extendBody: true,
+      extendBody: false,
       appBar: AppBar(
         title: Row(
           children: [

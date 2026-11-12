@@ -1,7 +1,10 @@
+import 'dart:convert';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../core/faber_app_state.dart';
 import '../core/tokens.dart';
 import '../models/faber_models.dart';
@@ -27,6 +30,11 @@ class _SettingsSystemScreenState extends State<SettingsSystemScreen> {
   bool _isPinging = false;
   String? _pingStatus;
   late bool _biometricLocal;
+  bool _isCheckingUpdate = false;
+  String? _updateStatus;
+  String? _latestVersion;
+  String? _ipaDownloadUrl;
+  String? _apkDownloadUrl;
 
   @override
   void initState() {
@@ -77,6 +85,79 @@ class _SettingsSystemScreenState extends State<SettingsSystemScreen> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('faber_biometric_enabled', value);
     widget.onBiometricChanged?.call(value);
+  }
+
+  Future<void> _checkForUpdates() async {
+    setState(() {
+      _isCheckingUpdate = true;
+      _updateStatus = 'Menghubungi server GitHub Releases...';
+    });
+    try {
+      final res = await http
+          .get(
+            Uri.parse(
+              'https://api.github.com/repos/curls1337/faber-mobile/releases/latest',
+            ),
+            headers: {'User-Agent': 'FaberStudioMobile'},
+          )
+          .timeout(const Duration(seconds: 10));
+
+      if (res.statusCode == 200) {
+        final data = jsonDecode(res.body) as Map<String, dynamic>;
+        final tag = (data['tag_name'] ?? 'v1.0.0').toString();
+        final assets = (data['assets'] as List?) ?? [];
+
+        String? ipaUrl;
+        String? apkUrl;
+        for (final item in assets) {
+          final name = (item['name'] ?? '').toString();
+          final dl = (item['browser_download_url'] ?? '').toString();
+          if (name.endsWith('.ipa')) ipaUrl = dl;
+          if (name.endsWith('.apk')) apkUrl = dl;
+        }
+
+        setState(() {
+          _latestVersion = tag;
+          _ipaDownloadUrl = ipaUrl;
+          _apkDownloadUrl = apkUrl;
+          _updateStatus = 'Versi $tag tersedia! Anda dapat langsung mengupdate via GBox tanpa menghapus aplikasi.';
+        });
+      } else {
+        setState(() {
+          _updateStatus = 'Aplikasi sudah pada versi terkini.';
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _updateStatus = 'Gagal memeriksa update: $e';
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isCheckingUpdate = false);
+      }
+    }
+  }
+
+  Future<void> _openDirectGBox(String ipaUrl) async {
+    // GBox / ESign URL schemes for direct in-place update installation without uninstall
+    final gboxUri = Uri.parse('gbox://install?url=${Uri.encodeComponent(ipaUrl)}');
+    final esignUri = Uri.parse('esign://install?url=${Uri.encodeComponent(ipaUrl)}');
+    final webUri = Uri.parse(ipaUrl);
+
+    if (await canLaunchUrl(gboxUri)) {
+      await launchUrl(gboxUri, mode: LaunchMode.externalApplication);
+    } else if (await canLaunchUrl(esignUri)) {
+      await launchUrl(esignUri, mode: LaunchMode.externalApplication);
+    } else {
+      await launchUrl(webUri, mode: LaunchMode.externalApplication);
+    }
+  }
+
+  Future<void> _launchUrl(String rawUrl) async {
+    final uri = Uri.parse(rawUrl);
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    }
   }
 
   @override
@@ -334,6 +415,91 @@ class _SettingsSystemScreenState extends State<SettingsSystemScreen> {
                   activeTrackColor: FaberTokens.accentIndigo,
                   onChanged: _toggleBiometric,
                 ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 16),
+
+          // In-App Update Center (1-Tap GBox Direct Update)
+          FaberGlassCard(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Row(
+                      children: [
+                        Icon(
+                          CupertinoIcons.arrow_2_circlepath_circle_fill,
+                          color: FaberTokens.accentEmerald,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Text(
+                          'Pembaruan Aplikasi (OTA)',
+                          style: TextStyle(
+                            color: FaberTokens.textPrimary,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    FaberPill(
+                      label: _latestVersion ?? 'v1.0.1',
+                      color: FaberTokens.accentEmerald,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  _updateStatus ??
+                      'Cek versi terbaru dari GitHub Releases. Update langsung via GBox/ESign tanpa harus menghapus data.',
+                  style: const TextStyle(
+                    color: FaberTokens.textSecondary,
+                    fontSize: 12.5,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                FaberGlassButton(
+                  label: _isCheckingUpdate ? 'Memeriksa...' : 'Cek Update Terbaru',
+                  icon: CupertinoIcons.cloud_download,
+                  isPrimary: true,
+                  isLoading: _isCheckingUpdate,
+                  onPressed: _checkForUpdates,
+                ),
+                if (_ipaDownloadUrl != null) ...[
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FaberGlassButton(
+                          label: 'Update via GBox (iOS)',
+                          icon: CupertinoIcons.device_phone_portrait,
+                          onPressed: () => _openDirectGBox(_ipaDownloadUrl!),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FaberGlassButton(
+                          label: 'Unduh .IPA',
+                          icon: CupertinoIcons.arrow_down_circle,
+                          onPressed: () => _launchUrl(_ipaDownloadUrl!),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                if (_apkDownloadUrl != null) ...[
+                  const SizedBox(height: 8),
+                  FaberGlassButton(
+                    label: 'Unduh APK Terbaru (Android)',
+                    icon: CupertinoIcons.arrow_down_doc,
+                    onPressed: () => _launchUrl(_apkDownloadUrl!),
+                  ),
+                ],
               ],
             ),
           ),
