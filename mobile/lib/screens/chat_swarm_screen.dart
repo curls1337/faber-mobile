@@ -35,6 +35,7 @@ class ChatSwarmScreen extends StatefulWidget {
 
 class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
   final TextEditingController _promptController = TextEditingController();
+  final FocusNode _promptFocusNode = FocusNode();
   final ScrollController _scrollController = ScrollController();
   final List<ChatAttachment> _pendingAttachments = [];
   final SpeechToText _speech = SpeechToText();
@@ -43,9 +44,18 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
   bool _isUploadingMedia = false;
 
   @override
+  void initState() {
+    super.initState();
+    _promptFocusNode.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
   void dispose() {
     _speech.stop();
     _promptController.dispose();
+    _promptFocusNode.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -75,6 +85,7 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
     buffer.write(text);
 
     _promptController.clear();
+    _promptFocusNode.unfocus(); // Dismiss keyboard on send
     setState(() {
       _pendingAttachments.clear();
       _isVoiceListening = false;
@@ -710,7 +721,10 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
           orElse: () => null,
         );
 
-    return Column(
+    return GestureDetector(
+      onTap: () => FocusScope.of(context).unfocus(), // Tap anywhere outside to dismiss keyboard
+      behavior: HitTestBehavior.translucent,
+      child: Column(
       children: [
         // Top Project Switcher & Swarm/Direct Toggle Bar
         Padding(
@@ -963,6 +977,7 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
                 Expanded(
                   child: TextField(
                     controller: _promptController,
+                    focusNode: _promptFocusNode,
                     minLines: 1,
                     maxLines: 4,
                     style: const TextStyle(
@@ -985,6 +1000,16 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
                     onSubmitted: (_) => _handleSend(state),
                   ),
                 ),
+                if (_promptFocusNode.hasFocus)
+                  IconButton(
+                    tooltip: 'Tutup Keyboard',
+                    onPressed: () => _promptFocusNode.unfocus(),
+                    icon: const Icon(
+                      CupertinoIcons.keyboard_chevron_compact_down,
+                      color: FaberTokens.accentCyan,
+                      size: 22,
+                    ),
+                  ),
                 IconButton(
                   tooltip: 'Voice command',
                   onPressed: _toggleVoiceInput,
@@ -1032,6 +1057,7 @@ class _ChatSwarmScreenState extends State<ChatSwarmScreen> {
           ),
         ),
       ],
+      ),
     );
   }
 }

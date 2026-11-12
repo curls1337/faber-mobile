@@ -1,7 +1,7 @@
 name: faber_mobile
 description: "Faber Studio iOS & Android Mobile Suite — Swarm, Code Studio, War Office & Media Vault"
 publish_to: 'none'
-version: 1.0.4+7
+version: 1.0.5+8
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
